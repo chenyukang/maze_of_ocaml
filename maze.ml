@@ -1,5 +1,4 @@
-(* ocamlopt -I /Users/kang/.opam/system/lib/lablgl lablgl.cmxa
-              lablglut.cmxa str.cmxa unix.cmxa maze.ml -o maze *)
+(* ocamlopt -I /Users/kang/.opam/system/lib/lablgl lablgl.cmxa lablglut.cmxa maze.ml -o maze *)
 
 type node = { mutable parent : int; mutable rank : int }
 type universe = node array
@@ -37,91 +36,101 @@ let line_width = 8
 let maze_width = ref 40
 let maze_height = ref 40
 let start_point = ref 0
+let move = 2
+let center = 10
 let end_point = ref (!maze_height * !maze_width - 1)
 let union_set = ref (create_universe (!maze_width * !maze_height))
-let edges = ref (Array.make (!maze_width * !maze_height - 1) (0, 0))
+let edges: (int * int) array ref = ref [||]
 
 let remove_edge idx =
-  let arr = Array.make (Array.length !edges - 1) (0, 0) and
-      now = ref 0 in
+  let arr: (int * int) array ref = ref [||] in
   Array.iteri (fun i e ->
                if i <> idx then
-                 begin
-                   Array.set arr !now e;
-                   now := !now + 1;
-                 end)
-               !edges;
-  edges := arr
+                 arr := Array.append !arr [|e|];
+    )
+    !edges;
+  edges := !arr
 
 let next_edge () =
   let idx = Random.int (Array.length !edges) in
   let res = Array.get !edges idx in
   match res with
-    (p1, p2) -> Printf.printf "value: %d %d\n" p1 p2;
+    (p1, p2) -> Printf.printf "remove: %d %d\n" p1 p2;
   remove_edge idx;
   res
 
-let generate_step () =
-  if is_connect !union_set !start_point !end_point == false then
+let rec generate_step () =
+  if is_connect !union_set !start_point !end_point == false then (
     let (p1, p2) = next_edge() in
     union !union_set p1 p2;
-    (p1, p2)
-  else
-    (-1, -1)
+    generate_step()
+  )
 
 let generate_maze (height, width) =
   maze_height := height;
   maze_width := width;
-  let edge_num = (height - 1) * width + (width - 1) * height in
   let node_num = width * height in
   union_set := create_universe node_num;
-  edges := Array.make edge_num (0, 0);
   end_point := node_num - 1;
-  let now = ref 0 in
-  for idx = 0 to node_num - 1 do
-    let row = idx / width  in
-    let col = idx mod height in
-    if row < height - 1 then
-      begin
-        Array.set !edges !now (idx, (row + 1) * width + col);
-        now := !now + 1;
-      end;
-    if col < width - 1 then
-      begin
-        Array.set !edges !now (idx, idx + 1);
-        now := !now + 1;
-      end
+  for row = 0 to height - 1 do
+    for col = 0 to width - 1 do
+      let cur = row * width + col in 
+      if row < height - 1 then
+        edges := Array.append !edges [|(cur, (row + 1) * width + col)|];
+      if col < width - 1 then
+        edges := Array.append !edges [|(cur, cur + 1)|];
+    done
   done;
-  let p = ref 1 in
-  while !p >= 0 do
-    let (p1, p2) = generate_step() in
-    if p1 < 0 then
-      p := p1;
-  done
+  generate_step()
 
 let vertex (x, y) =
   GlDraw.vertex2 (float line_width *. (0.5 +. float x),
                   float line_width *. (0.5 +. float y))
 
+let render_maze() =
+  Array.iteri (fun _ (p1, p2) ->
+      GlDraw.begins `line_strip;
+      let x1, y1 = move * (p1 / !maze_width), move * (p1 mod !maze_width) in
+      let x2, y2 = move * (p2 / !maze_width), move * (p2 mod !maze_width) in
+      (* Printf.printf "now: (%d %d) (%d %d)\n" x1 y1 x2 y2; *)
+      if x1 == x2 then (
+        vertex (x1 + center, (min y1 y2) + center);
+        vertex (x1 + move + center, (min y1 y2) + center);
+      );
+      if y1 == y2 then (
+        vertex ((min x1 x2) + center, y1 + center);
+        vertex ((min x1 x2) + center, y1 + move + center);
+      );
+      GlDraw.ends();
+    ) !edges;;
+
 let render () =
   GlClear.clear [ `color ];
   GlMat.load_identity ();
-  List.iter GlDraw.vertex2 [-1., -1.; 0., 1.; 1., -1.];
+
   GlDraw.color (1., 1., 1.);
+
   GlDraw.begins `line_strip;
-  vertex (1, 2);
-  vertex (1, 10);
+  vertex (center, center);
+  vertex (!maze_width * move + center, center);
   GlDraw.ends();
 
   GlDraw.begins `line_strip;
-  vertex (2, 2);
-  vertex (2, 10);
+  vertex (!maze_width * move + center, center);
+  vertex (!maze_width * move + center, !maze_height * move + center);
   GlDraw.ends();
 
   GlDraw.begins `line_strip;
-  vertex (3, 2);
-  vertex (3, 10);
+  vertex (!maze_width * move + center, !maze_height * move + center);
+  vertex (center, !maze_height * move + center);
   GlDraw.ends();
+
+  GlDraw.begins `line_strip;
+  vertex (center, !maze_height * move + center);
+  vertex (center, center);
+  GlDraw.ends();
+
+  render_maze();
   Glut.swapBuffers ()
 
 (* Setup a 2D orthogonal projection. *)
@@ -150,7 +159,7 @@ let _ =
   Glut.initDisplayMode ~double_buffer:true ();
   Glut.initWindowSize !width !height;
   ignore(Glut.createWindow ~title: "Ocaml Maze");
-  generate_maze(3, 3);
+  generate_maze(20, 20);
   Glut.reshapeFunc reshape;
   Glut.displayFunc ~cb:render;
   Glut.idleFunc ~cb:(Some Glut.postRedisplay);
