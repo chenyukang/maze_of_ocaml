@@ -36,41 +36,41 @@ let line_width = 8
 let maze_width = ref 40
 let maze_height = ref 40
 let start_point = ref 0
-let move = 2
-let center = 10
+let move = 1
+let center = ref 30
 let end_point = ref (!maze_height * !maze_width - 1)
-let union_set = ref (create_universe (!maze_width * !maze_height))
+let union_set = (create_universe (!maze_width * !maze_height))
 let edges: (int * int) array ref = ref [||]
 
-let remove_edge idx =
+let remove_edge edges idx =
   let arr: (int * int) array ref = ref [||] in
   Array.iteri (fun i e ->
                if i <> idx then
                  arr := Array.append !arr [|e|];
     )
-    !edges;
-  edges := !arr
+    edges;
+  !arr
 
-let next_edge () =
-  let idx = Random.int (Array.length !edges) in
-  let res = Array.get !edges idx in
-  match res with
+let next_edge edges =
+  let idx = Random.int (Array.length edges) in
+  let pair = Array.get edges idx in
+  match pair with
     (p1, p2) -> Printf.printf "remove: %d %d\n" p1 p2;
-  remove_edge idx;
-  res
+  (pair, remove_edge edges idx)
 
-let rec generate_step () =
-  if is_connect !union_set !start_point !end_point == false then (
-    let (p1, p2) = next_edge() in
-    union !union_set p1 p2;
-    generate_step()
-  )
+let rec generate_step union_set edges =
+  if is_connect union_set !start_point !end_point == false then (
+    let (p1, p2), edges = next_edge edges in
+    union union_set p1 p2;
+    generate_step union_set edges
+  ) else edges
 
 let generate_maze (height, width) =
   maze_height := height;
   maze_width := width;
   let node_num = width * height in
-  union_set := create_universe node_num;
+  let union_set = create_universe node_num in
+  let edges = ref [||] in 
   end_point := node_num - 1;
   for row = 0 to height - 1 do
     for col = 0 to width - 1 do
@@ -81,53 +81,54 @@ let generate_maze (height, width) =
         edges := Array.append !edges [|(cur, cur + 1)|];
     done
   done;
-  generate_step()
+  Printf.printf "size: %d" (Array.length !edges);
+  generate_step union_set !edges
 
 let vertex (x, y) =
   GlDraw.vertex2 (float line_width *. (0.5 +. float x),
                   float line_width *. (0.5 +. float y))
 
-let render_maze() =
+let render_maze ()=
   Array.iteri (fun _ (p1, p2) ->
-      GlDraw.begins `line_strip;
       let x1, y1 = move * (p1 / !maze_width), move * (p1 mod !maze_width) in
       let x2, y2 = move * (p2 / !maze_width), move * (p2 mod !maze_width) in
-      (* Printf.printf "now: (%d %d) (%d %d)\n" x1 y1 x2 y2; *)
+      GlDraw.begins `line_strip;
       if x1 == x2 then (
-        vertex (x1 + center, (min y1 y2) + center);
-        vertex (x1 + move + center, (min y1 y2) + center);
+        vertex (x1 + !center, (max y1 y2) + !center);
+        vertex (x1 + move + !center, (max y1 y2) + !center);
       );
       if y1 == y2 then (
-        vertex ((min x1 x2) + center, y1 + center);
-        vertex ((min x1 x2) + center, y1 + move + center);
+        vertex ((max x1 x2) + !center, y1 + !center);
+        vertex ((max x1 x2) + !center, y1 + move + !center);
+
       );
       GlDraw.ends();
     ) !edges;;
 
 let render () =
-  GlClear.clear [ `color ];
+  GlClear.clear [`color];
   GlMat.load_identity ();
 
   GlDraw.color (1., 1., 1.);
 
   GlDraw.begins `line_strip;
-  vertex (center, center);
-  vertex (!maze_width * move + center, center);
+  vertex (!center, !center);
+  vertex (!maze_width * move + !center, !center);
   GlDraw.ends();
 
   GlDraw.begins `line_strip;
-  vertex (!maze_width * move + center, center);
-  vertex (!maze_width * move + center, !maze_height * move + center);
+  vertex (!maze_width * move + !center, !center);
+  vertex (!maze_width * move + !center, !maze_height * move + !center);
   GlDraw.ends();
 
   GlDraw.begins `line_strip;
-  vertex (!maze_width * move + center, !maze_height * move + center);
-  vertex (center, !maze_height * move + center);
+  vertex (!maze_width * move + !center, !maze_height * move + !center);
+  vertex (!center, !maze_height * move + !center);
   GlDraw.ends();
 
   GlDraw.begins `line_strip;
-  vertex (center, !maze_height * move + center);
-  vertex (center, center);
+  vertex (!center, !maze_height * move + !center);
+  vertex (!center, !center);
   GlDraw.ends();
 
   render_maze();
@@ -149,17 +150,17 @@ let reshape ~w ~h =
   Gl.flush ()
 
 let keyboardFunc ~key ~x ~y =
-  let c = Char.chr key in
-  match c with
+  match Char.chr key  with
     'q' | 'Q' -> exit 0
-    | _ -> ()
+  | _ -> ()
 
 let _ =
   ignore( Glut.init Sys.argv );
   Glut.initDisplayMode ~double_buffer:true ();
   Glut.initWindowSize !width !height;
   ignore(Glut.createWindow ~title: "Ocaml Maze");
-  generate_maze(20, 20);
+  edges := generate_maze(40, 40);
+  Printf.printf "size: %d" (Array.length !edges);
   Glut.reshapeFunc reshape;
   Glut.displayFunc ~cb:render;
   Glut.idleFunc ~cb:(Some Glut.postRedisplay);
