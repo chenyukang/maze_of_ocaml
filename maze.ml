@@ -70,11 +70,11 @@ let generate_maze (height, width) =
   maze_width := width;
   let node_num = width * height in
   let union_set = create_universe node_num in
-  let edges = ref [||] in 
+  let edges = ref [||] in
   end_point := node_num - 1;
   for row = 0 to height - 1 do
     for col = 0 to width - 1 do
-      let cur = row * width + col in 
+      let cur = row * width + col in
       if row < height - 1 then
         edges := Array.append !edges [|(cur, (row + 1) * width + col)|];
       if col < width - 1 then
